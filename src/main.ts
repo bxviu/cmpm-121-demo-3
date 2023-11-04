@@ -95,7 +95,15 @@ sensorButton.addEventListener("click", () => {
       leaflet.latLng(position.coords.latitude, position.coords.longitude)
     );
     map.setView(playerMarker.getLatLng());
+    renderPits(playerMarker.getLatLng());
   });
+});
+
+const reset = document.querySelector("#north")!;
+reset.addEventListener("click", () => {
+  playerMarker.setLatLng(leaflet.latLng(0, 0));
+  map.setView(playerMarker.getLatLng());
+  renderPits(playerMarker.getLatLng());
 });
 
 interface GeoCoin {
@@ -236,13 +244,24 @@ function createCell(i: number, j: number, originLocation: leaflet.LatLng) {
     return;
   }
   makePit(i, j, originLocation);
-  worldMap.setCellForPoint({ i: i, j: j });
+  worldMap.setCellForPoint({
+    i: originLocation.lat + i * TILE_DEGREES,
+    j: originLocation.lng + j * TILE_DEGREES,
+  });
 }
 
-for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-  for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-    if (luck([i, j].toString()) < PIT_SPAWN_PROBABILITY) {
-      createCell(i, j, NULL_ISLAND);
+function renderPits(location: leaflet.LatLng) {
+  for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
+    for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
+      if (
+        luck([i + location.lat, j + location.lng].toString()) <
+        PIT_SPAWN_PROBABILITY
+      ) {
+        createCell(i, j, location);
+      }
     }
   }
+  worldMap.check();
 }
+
+renderPits(NULL_ISLAND);

@@ -58,4 +58,8 @@ export class Board {
     });
     return resultCells;
   }
+
+  check() {
+    console.log(this.knownCells);
+  }
 }
