@@ -18,7 +18,10 @@ export class Board {
   }
 
   private getCanonicalCell(cell: Cell): Cell | undefined {
-    const { i, j } = cell;
+    let { i, j } = cell;
+    const step = 0.0001;
+    i = Math.round(i / step);
+    j = Math.round(j / step);
     const key = [i, j].toString();
     return this.knownCells.get(key);
   }
@@ -31,7 +34,10 @@ export class Board {
   }
 
   setCellForPoint(cell: Cell) {
-    const { i, j } = cell;
+    let { i, j } = cell;
+    const step = 0.0001;
+    i = Math.round(i / step);
+    j = Math.round(j / step);
     const key = [i, j].toString();
     this.knownCells.set(key, cell);
   }
