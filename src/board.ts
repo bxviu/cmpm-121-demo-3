@@ -1,4 +1,5 @@
 import leaflet from "leaflet";
+import luck from "./luck";
 
 interface Cell {
   readonly i: number;
@@ -17,29 +18,23 @@ export class Board {
     this.knownCells = new Map();
   }
 
-  private getCanonicalCell(cell: Cell): Cell | undefined {
+  private getCanonicalCell(cell: Cell): Cell {
     let { i, j } = cell;
     const step = 0.0001;
     i = Math.round(i / step);
     j = Math.round(j / step);
     const key = [i, j].toString();
-    return this.knownCells.get(key);
+    if (!this.knownCells.has(key)) {
+      this.knownCells.set(key, cell);
+    }
+    return this.knownCells.get(key)!;
   }
 
-  getCellForPoint(point: leaflet.LatLng): Cell | undefined {
+  getCellForPoint(point: leaflet.LatLng): Cell {
     return this.getCanonicalCell({
       i: point.lat,
       j: point.lng,
     });
-  }
-
-  setCellForPoint(cell: Cell) {
-    let { i, j } = cell;
-    const step = 0.0001;
-    i = Math.round(i / step);
-    j = Math.round(j / step);
-    const key = [i, j].toString();
-    this.knownCells.set(key, cell);
   }
 
   getCellBounds(cell: Cell): leaflet.LatLngBounds {
@@ -49,19 +44,35 @@ export class Board {
     ]);
   }
 
-  getCellsNearPoint(point: leaflet.LatLng): Cell[] {
+  getCellsNearPoint(point: leaflet.LatLng, spawnChance: number): Cell[] {
     const resultCells: Cell[] = [];
     const originCell = this.getCellForPoint(point);
-    const originBounds = this.getCellBounds(originCell!);
-    this.knownCells.forEach((cell) => {
-      if (originCell!.i === cell.i && originCell!.j === cell.j) {
-        return;
+    for (
+      let i = -this.tileVisibilityRadius;
+      i <= this.tileVisibilityRadius;
+      i++
+    ) {
+      for (
+        let j = -this.tileVisibilityRadius;
+        j <= this.tileVisibilityRadius;
+        j++
+      ) {
+        if (luck([i, j].toString()) < spawnChance) {
+          const cell = { i: originCell.i + i, j: originCell.j + j };
+          resultCells.push(cell);
+        }
       }
-      const cellBounds = this.getCellBounds(cell);
-      if (originBounds.pad(this.tileVisibilityRadius).intersects(cellBounds)) {
-        resultCells.push(cell);
-      }
-    });
+    }
+    // const originBounds = this.getCellBounds(originCell);
+    // this.knownCells.forEach((cell) => {
+    //   if (originCell.i === cell.i && originCell.j === cell.j) {
+    //     return;
+    //   }
+    //   const cellBounds = this.getCellBounds(cell);
+    //   if (originBounds.pad(this.tileVisibilityRadius).intersects(cellBounds)) {
+    //     resultCells.push(cell);
+    //   }
+    // });
     return resultCells;
   }
 

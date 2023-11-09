@@ -167,16 +167,10 @@ statusPanel.innerHTML = "No coins yet...";
 
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
-function makePit(i: number, j: number, originLocation: leaflet.LatLng) {
+function makePit(i: number, j: number) {
   const bounds = leaflet.latLngBounds([
-    [
-      originLocation.lat + i * TILE_DEGREES,
-      originLocation.lng + j * TILE_DEGREES,
-    ],
-    [
-      originLocation.lat + (i + 1) * TILE_DEGREES,
-      originLocation.lng + (j + 1) * TILE_DEGREES,
-    ],
+    [i * TILE_DEGREES, j * TILE_DEGREES],
+    [(i + 1) * TILE_DEGREES, (j + 1) * TILE_DEGREES],
   ]);
 
   const pit = leaflet.rectangle(bounds) as leaflet.Layer;
@@ -268,39 +262,45 @@ function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
   });
 }
 
-function createCell(i: number, j: number, originLocation: leaflet.LatLng) {
-  // const pitCell = worldMap.getCellForPoint(
-  //   leaflet.latLng({
-  //     lat: Math.round(originLocation.lat / TILE_DEGREES) + i * TILE_DEGREES,
-  //     lng: Math.round(originLocation.lng / TILE_DEGREES) + j * TILE_DEGREES,
-  //   })
-  // );
-  // if (pitCell) {
-  //   return;
-  // }
-  makePit(i, j, originLocation);
-  worldMap.setCellForPoint({
-    i: Math.round(originLocation.lat / TILE_DEGREES) + i * TILE_DEGREES,
-    j: Math.round(originLocation.lng / TILE_DEGREES) + j * TILE_DEGREES,
-  });
-}
+// function createCell(i: number, j: number, originLocation: leaflet.LatLng) {
+// const pitCell = worldMap.getCellForPoint(
+//   leaflet.latLng({
+//     lat: Math.round(originLocation.lat / TILE_DEGREES) + i * TILE_DEGREES,
+//     lng: Math.round(originLocation.lng / TILE_DEGREES) + j * TILE_DEGREES,
+//   })
+// );
+// if (pitCell) {
+//   return;
+// }
+//   makePit(i, j, originLocation);
+// }
 
 function renderPits(location: leaflet.LatLng) {
-  for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-    for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-      if (
-        luck(
-          [
-            i + Math.round(location.lat / TILE_DEGREES),
-            j + Math.round(location.lng / TILE_DEGREES),
-          ].toString()
-        ) < PIT_SPAWN_PROBABILITY
-      ) {
-        createCell(i, j, location);
-      }
-    }
+  const pitsToRender = worldMap.getCellsNearPoint(
+    location,
+    PIT_SPAWN_PROBABILITY
+  );
+  console.log(pitsToRender);
+  for (const pit of pitsToRender) {
+    // if (luck([pit.i, pit.j].toString()) < PIT_SPAWN_PROBABILITY) {
+    makePit(pit.i, pit.j);
+    // }
   }
-  worldMap.check();
+  // for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
+  //   for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
+  //     if (
+  //       luck(
+  //         [
+  //           i + Math.round(location.lat / TILE_DEGREES),
+  //           j + Math.round(location.lng / TILE_DEGREES),
+  //         ].toString()
+  //       ) < PIT_SPAWN_PROBABILITY
+  //     ) {
+  //       createCell(i, j, location);
+  //     }
+  //   }
+  // }
+  // worldMap.check();
 }
 
 renderPits(NULL_ISLAND);
