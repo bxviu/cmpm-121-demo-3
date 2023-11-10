@@ -1,6 +1,6 @@
 import "leaflet/dist/leaflet.css";
 import "./style.css";
-import leaflet from "leaflet";
+import leaflet, { latLng } from "leaflet";
 import luck from "./luck";
 import "./leafletWorkaround";
 import { Board } from "./board";
@@ -10,7 +10,7 @@ import { Board } from "./board";
 //   lng: -122.0533,
 // });
 
-const NULL_ISLAND = leaflet.latLng({
+const NULL_ISLAND = latLng({
   lat: 0,
   lng: 0,
 });
@@ -33,7 +33,7 @@ const map = leaflet.map(mapContainer, {
 
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
+    maxZoom: GAMEPLAY_ZOOM_LEVEL,
     attribution:
       // eslint-disable-next-line @typescript-eslint/quotes
       '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -79,7 +79,9 @@ playerContainer.addEventListener("click", (e) => {
   return false;
 });
 playerMarker.bindTooltip(() => {
-  return `At: ${playerMarker.getLatLng().lat}, ${playerMarker.getLatLng().lng}`;
+  return `At: ${Math.round(
+    playerMarker.getLatLng().lat / TILE_DEGREES
+  )}, ${Math.round(playerMarker.getLatLng().lng / TILE_DEGREES)}`;
 });
 playerMarker.bindPopup(
   () => {
@@ -94,7 +96,7 @@ const sensorButton = document.querySelector("#sensor")!;
 sensorButton.addEventListener("click", () => {
   navigator.geolocation.watchPosition((position) => {
     playerMarker.setLatLng(
-      leaflet.latLng(position.coords.latitude, position.coords.longitude)
+      latLng(position.coords.latitude, position.coords.longitude)
     );
     redrawMap();
   });
@@ -113,7 +115,10 @@ const moveRight = document.querySelector("#east")!;
 addMovementClickEvent(moveRight, 0, TILE_DEGREES);
 
 const reset = document.querySelector("#reset")!;
-addMovementClickEvent(reset, 0, 0);
+reset.addEventListener("click", () => {
+  playerMarker.setLatLng(latLng(0, 0));
+  redrawMap();
+});
 
 function addMovementClickEvent(
   button: Element,
@@ -122,7 +127,7 @@ function addMovementClickEvent(
 ) {
   button.addEventListener("click", () => {
     playerMarker.setLatLng(
-      leaflet.latLng(
+      latLng(
         playerMarker.getLatLng().lat + deltaLat,
         playerMarker.getLatLng().lng + deltaLng
       )
@@ -131,14 +136,46 @@ function addMovementClickEvent(
   });
 }
 
+const renderedCaches: Geocache[] = [];
+
 function redrawMap() {
   map.eachLayer((layer) => {
     if (layer instanceof leaflet.Rectangle) {
       map.removeLayer(layer);
     }
   });
+  renderedCaches.forEach((geoCache) => {
+    const key = [geoCache.lat, geoCache.lng].toString();
+    momentoStorage.set(key, geoCache.toMomento());
+  });
+  renderedCaches.splice(0, renderedCaches.length);
   map.setView(playerMarker.getLatLng());
   renderPits(playerMarker.getLatLng());
+}
+
+interface Momento<T> {
+  toMomento(): T;
+  fromMomento(momento: T): void;
+}
+
+const momentoStorage: Map<string, string> = new Map<string, string>();
+
+class Geocache implements Momento<string> {
+  lat: number;
+  lng: number;
+  coins: GeoCoin[];
+  constructor(point: leaflet.LatLng) {
+    this.lat = point.lat;
+    this.lng = point.lng;
+    this.coins = [];
+  }
+  toMomento() {
+    return JSON.stringify(this.coins);
+  }
+
+  fromMomento(momento: string) {
+    this.coins = JSON.parse(momento) as GeoCoin[];
+  }
 }
 
 interface GeoCoin {
@@ -167,30 +204,43 @@ statusPanel.innerHTML = "No coins yet...";
 
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
-function makePit(i: number, j: number) {
-  const bounds = leaflet.latLngBounds([
-    [i * TILE_DEGREES, j * TILE_DEGREES],
-    [(i + 1) * TILE_DEGREES, (j + 1) * TILE_DEGREES],
-  ]);
-
-  const pit = leaflet.rectangle(bounds) as leaflet.Layer;
-
+function initializePit(point: leaflet.LatLng, geoCache: Geocache) {
+  const key = [point.lat, point.lng].toString();
+  if (momentoStorage.get(key)) {
+    geoCache.fromMomento(momentoStorage.get(key)!);
+    return;
+  }
   const startingCoins = Math.floor(
-    Math.floor(luck([i, j, "initialValue"].toString()) * 100) / 15
+    Math.floor(luck([point.lat, point.lng, "initialValue"].toString()) * 100) /
+      15
   );
-
-  const coordinate = {
-    lat: Math.floor(bounds.getCenter().lat / TILE_DEGREES),
-    lng: Math.floor(bounds.getCenter().lng / TILE_DEGREES),
-  };
-  const geoCoinCache: GeoCoin[] = [];
   for (let k = 0; k < startingCoins; k++) {
-    geoCoinCache.push({
-      lat: coordinate.lat,
-      lng: coordinate.lng,
+    geoCache.coins.push({
+      lat: point.lat,
+      lng: point.lng,
       serial: k,
     });
   }
+}
+
+function makePit(i: number, j: number) {
+  const bounds = worldMap.getCellBounds({ i, j });
+
+  const pit = leaflet.rectangle(bounds) as leaflet.Layer;
+
+  // const startingCoins = Math.floor(
+  //   Math.floor(luck([i, j, "initialValue"].toString()) * 100) / 15
+  // );
+  const coordinate = latLng(i, j);
+  const geoCache = new Geocache(coordinate);
+  initializePit(coordinate, geoCache);
+  // for (let k = 0; k < startingCoins; k++) {
+  //   geoCache.coins.push({
+  //     lat: coordinate.lat,
+  //     lng: coordinate.lng,
+  //     serial: k,
+  //   });
+  // }
 
   const tip = pit.bindTooltip(`Pit: ${coordinate.lat},${coordinate.lng}`);
 
@@ -198,12 +248,12 @@ function makePit(i: number, j: number) {
     tip.closeTooltip();
     const container = document.createElement("div");
     selectedPit = {
-      cache: geoCoinCache,
+      cache: geoCache.coins,
       container: container,
       coordinate: coordinate,
     };
     updatePlayerCache(playerCoins, playerContainer);
-    updateGeoCoinCache(geoCoinCache, container, coordinate);
+    updateGeoCoinCache(geoCache.coins, container, coordinate);
     container.addEventListener("click", (e) => {
       if (e.target instanceof HTMLButtonElement) {
         const regex = /(-?\d+)/g;
@@ -215,16 +265,16 @@ function makePit(i: number, j: number) {
         const [lat, lng, serial] = numbers;
         totalCoins++;
         // remove coin and add it to player inventory
-        const foundCoin = getCoin(geoCoinCache, {
+        const foundCoin = getCoin(geoCache.coins, {
           lat: lat,
           lng: lng,
           serial: serial,
         } as GeoCoin);
         playerCoins.push(
-          geoCoinCache.splice(geoCoinCache.indexOf(foundCoin!), 1)[0]
+          geoCache.coins.splice(geoCache.coins.indexOf(foundCoin!), 1)[0]
         );
         statusPanel.innerHTML = `${totalCoins} total GeoCoin(s)`;
-        updateGeoCoinCache(geoCoinCache, container, coordinate);
+        updateGeoCoinCache(geoCache.coins, container, coordinate);
         updatePlayerCache(playerCoins, playerContainer);
       }
       e.stopPropagation();
@@ -238,6 +288,7 @@ function makePit(i: number, j: number) {
     updatePlayerCache(playerCoins, playerContainer);
   });
   pit.addTo(map);
+  return geoCache;
 }
 
 function updateGeoCoinCache(
@@ -262,45 +313,18 @@ function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
   });
 }
 
-// function createCell(i: number, j: number, originLocation: leaflet.LatLng) {
-// const pitCell = worldMap.getCellForPoint(
-//   leaflet.latLng({
-//     lat: Math.round(originLocation.lat / TILE_DEGREES) + i * TILE_DEGREES,
-//     lng: Math.round(originLocation.lng / TILE_DEGREES) + j * TILE_DEGREES,
-//   })
-// );
-// if (pitCell) {
-//   return;
-// }
-//   makePit(i, j, originLocation);
-// }
-
 function renderPits(location: leaflet.LatLng) {
-  const pitsToRender = worldMap.getCellsNearPoint(
-    location,
-    PIT_SPAWN_PROBABILITY
-  );
-  console.log(pitsToRender);
-  for (const pit of pitsToRender) {
-    // if (luck([pit.i, pit.j].toString()) < PIT_SPAWN_PROBABILITY) {
-    makePit(pit.i, pit.j);
-    // }
+  // const roundedLocation = latLng(
+  //   Math.round(location.lat / TILE_DEGREES),
+  //   Math.round(location.lng / TILE_DEGREES)
+  // );
+  const nearbyCells = worldMap.getCellsNearPoint(location);
+  for (const cell of nearbyCells) {
+    if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
+      const canonicalCell = worldMap.getCellForPoint(latLng(cell.i, cell.j));
+      renderedCaches.push(makePit(canonicalCell.i, canonicalCell.j));
+    }
   }
-  // for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-  //   for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-  //     if (
-  //       luck(
-  //         [
-  //           i + Math.round(location.lat / TILE_DEGREES),
-  //           j + Math.round(location.lng / TILE_DEGREES),
-  //         ].toString()
-  //       ) < PIT_SPAWN_PROBABILITY
-  //     ) {
-  //       createCell(i, j, location);
-  //     }
-  //   }
-  // }
-  // worldMap.check();
 }
 
 renderPits(NULL_ISLAND);

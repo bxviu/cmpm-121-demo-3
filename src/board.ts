@@ -1,5 +1,4 @@
 import leaflet from "leaflet";
-import luck from "./luck";
 
 interface Cell {
   readonly i: number;
@@ -15,14 +14,16 @@ export class Board {
   constructor(tileWidth: number, tileVisibilityRadius: number) {
     this.tileWidth = tileWidth;
     this.tileVisibilityRadius = tileVisibilityRadius;
-    this.knownCells = new Map();
+    this.knownCells = new Map<string, Cell>();
   }
 
   private getCanonicalCell(cell: Cell): Cell {
-    let { i, j } = cell;
-    const step = 0.0001;
-    i = Math.round(i / step);
-    j = Math.round(j / step);
+    const { i, j } = cell;
+    // {
+    //   i: Math.round(cell.i / 1),
+    //   j: Math.round(cell.j / 1),
+    // };
+    // console.log(i, j);
     const key = [i, j].toString();
     if (!this.knownCells.has(key)) {
       this.knownCells.set(key, cell);
@@ -39,14 +40,19 @@ export class Board {
 
   getCellBounds(cell: Cell): leaflet.LatLngBounds {
     return leaflet.latLngBounds([
-      [cell.i, cell.j],
-      [cell.i + this.tileWidth, cell.j + this.tileWidth],
+      [cell.i * this.tileWidth, cell.j * this.tileWidth],
+      [(cell.i + 1) * this.tileWidth, (cell.j + 1) * this.tileWidth],
     ]);
   }
 
-  getCellsNearPoint(point: leaflet.LatLng, spawnChance: number): Cell[] {
+  getCellsNearPoint(point: leaflet.LatLng): Cell[] {
     const resultCells: Cell[] = [];
-    const originCell = this.getCellForPoint(point);
+    // also adds where the player is to the known cells. was part of starter code so not sure if i should change
+    const roundedLocation = {
+      lat: Math.round(point.lat / this.tileWidth),
+      lng: Math.round(point.lng / this.tileWidth),
+    };
+    const originCell = this.getCellForPoint(roundedLocation as leaflet.LatLng);
     for (
       let i = -this.tileVisibilityRadius;
       i <= this.tileVisibilityRadius;
@@ -57,26 +63,11 @@ export class Board {
         j <= this.tileVisibilityRadius;
         j++
       ) {
-        if (luck([i, j].toString()) < spawnChance) {
-          const cell = { i: originCell.i + i, j: originCell.j + j };
-          resultCells.push(cell);
-        }
+        // cell coordinates already get rounded to closest cell due to the origin being rounded
+        const cell = { i: originCell.i + i, j: originCell.j + j };
+        resultCells.push(cell);
       }
     }
-    // const originBounds = this.getCellBounds(originCell);
-    // this.knownCells.forEach((cell) => {
-    //   if (originCell.i === cell.i && originCell.j === cell.j) {
-    //     return;
-    //   }
-    //   const cellBounds = this.getCellBounds(cell);
-    //   if (originBounds.pad(this.tileVisibilityRadius).intersects(cellBounds)) {
-    //     resultCells.push(cell);
-    //   }
-    // });
     return resultCells;
-  }
-
-  check() {
-    console.log(this.knownCells);
   }
 }
