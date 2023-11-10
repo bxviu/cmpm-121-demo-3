@@ -5,11 +5,6 @@ import luck from "./luck";
 import "./leafletWorkaround";
 import { Board } from "./board";
 
-// const MERRILL_CLASSROOM = leaflet.latLng({
-//   lat: 36.9995,
-//   lng: -122.0533,
-// });
-
 const NULL_ISLAND = latLng({
   lat: 0,
   lng: 0,
@@ -205,9 +200,9 @@ statusPanel.innerHTML = "No coins yet...";
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
 function initializePit(point: leaflet.LatLng, geoCache: Geocache) {
-  const key = [point.lat, point.lng].toString();
-  if (momentoStorage.get(key)) {
-    geoCache.fromMomento(momentoStorage.get(key)!);
+  const momento = momentoStorage.get([point.lat, point.lng].toString());
+  if (momento) {
+    geoCache.fromMomento(momento);
     return;
   }
   const startingCoins = Math.floor(
@@ -228,19 +223,9 @@ function makePit(i: number, j: number) {
 
   const pit = leaflet.rectangle(bounds) as leaflet.Layer;
 
-  // const startingCoins = Math.floor(
-  //   Math.floor(luck([i, j, "initialValue"].toString()) * 100) / 15
-  // );
   const coordinate = latLng(i, j);
   const geoCache = new Geocache(coordinate);
   initializePit(coordinate, geoCache);
-  // for (let k = 0; k < startingCoins; k++) {
-  //   geoCache.coins.push({
-  //     lat: coordinate.lat,
-  //     lng: coordinate.lng,
-  //     serial: k,
-  //   });
-  // }
 
   const tip = pit.bindTooltip(`Pit: ${coordinate.lat},${coordinate.lng}`);
 
@@ -314,10 +299,6 @@ function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
 }
 
 function renderPits(location: leaflet.LatLng) {
-  // const roundedLocation = latLng(
-  //   Math.round(location.lat / TILE_DEGREES),
-  //   Math.round(location.lng / TILE_DEGREES)
-  // );
   const nearbyCells = worldMap.getCellsNearPoint(location);
   for (const cell of nearbyCells) {
     if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
