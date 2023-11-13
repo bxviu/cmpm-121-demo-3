@@ -1,6 +1,6 @@
 import "leaflet/dist/leaflet.css";
 import "./style.css";
-import leaflet, { latLng } from "leaflet";
+import leaflet, { LatLng, latLng } from "leaflet";
 import luck from "./luck";
 import "./leafletWorkaround";
 import { Board } from "./board";
@@ -61,6 +61,7 @@ playerContainer.addEventListener("click", (e) => {
     selectedPit!.cache.push(
       playerCoins.splice(playerCoins.indexOf(foundCoin!), 1)[0]
     );
+    localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
     statusPanel.innerHTML = `${totalCoins} total GeoCoin(s)`;
     updateGeoCoinCache(
       selectedPit!.cache,
@@ -87,19 +88,10 @@ playerMarker.bindPopup(
 );
 playerMarker.addTo(map);
 
+let watchID = 0;
 const sensorButton = document.querySelector("#sensor")!;
 sensorButton.addEventListener("click", () => {
-  // const position = map.locate({
-  //   setView: true,
-  //   watch: true,
-  //   maxZoom: GAMEPLAY_ZOOM_LEVEL,
-  // });
-  // console.log(playerMarker.getLatLng());
-  // playerMarker.setLatLng(
-  //   latLng(position.getCenter().lat, position.getCenter().lng)
-  // );
-  // console.log(playerMarker.getLatLng());
-  navigator.geolocation.watchPosition((position) => {
+  watchID = navigator.geolocation.watchPosition((position) => {
     playerMarker.setLatLng(
       latLng(position.coords.latitude, position.coords.longitude)
     );
@@ -122,8 +114,11 @@ addMovementClickEvent(moveRight, 0, TILE_DEGREES);
 const reset = document.querySelector("#reset")!;
 reset.addEventListener("click", () => {
   // playerMarker.setLatLng(latLng(0, 0));
+  navigator.geolocation.clearWatch(watchID);
   playerCoins.splice(0, playerCoins.length);
+  playerHistory.splice(0, playerHistory.length);
   momentoStorage.clear();
+  localStorage.clear();
   worldMap.clearKnownCells();
   renderedCaches.splice(0, renderedCaches.length);
   redrawMap();
@@ -149,15 +144,21 @@ const renderedCaches: Geocache[] = [];
 
 function redrawMap() {
   map.eachLayer((layer) => {
-    if (layer instanceof leaflet.Rectangle) {
+    if (
+      layer instanceof leaflet.Rectangle ||
+      layer instanceof leaflet.Polyline
+    ) {
       map.removeLayer(layer);
     }
   });
   renderedCaches.forEach((geoCache) => {
     const key = [geoCache.lat, geoCache.lng].toString();
     momentoStorage.set(key, geoCache.toMomento());
+    localStorage.setItem(key, geoCache.toMomento());
   });
   renderedCaches.splice(0, renderedCaches.length);
+  playerHistory.push(playerMarker.getLatLng());
+  leaflet.polyline(playerHistory, { color: "red" }).addTo(map);
   map.setView(playerMarker.getLatLng());
   renderPits(playerMarker.getLatLng());
 }
@@ -192,7 +193,10 @@ interface GeoCoin {
   lng: number;
   serial: number;
 }
-
+///// need to update player ui when refreshing coins, local storage
+///// remove unused momento storage
+/////polyline
+/////prompt before reset, center on coin's origin home, better coin ui, hide artificial movement unless asked
 function getCoin(coinCache: GeoCoin[], coinData: GeoCoin): GeoCoin | undefined {
   for (const coin of coinCache) {
     if (
@@ -208,13 +212,23 @@ function getCoin(coinCache: GeoCoin[], coinData: GeoCoin): GeoCoin | undefined {
 
 let totalCoins = 0;
 const playerCoins: GeoCoin[] = [];
+const playerHistory: LatLng[] = [];
+if (localStorage.getItem("playerCoins")) {
+  const coinString = localStorage.getItem("playerCoins")!;
+  const storageCoins = JSON.parse(coinString) as GeoCoin[];
+  playerCoins.push(...storageCoins);
+  totalCoins = playerCoins.length;
+}
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML = "No coins yet...";
+statusPanel.innerHTML = totalCoins
+  ? `${totalCoins} total GeoCoin(s)`
+  : "No coins yet...";
 
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
 function initializePit(point: leaflet.LatLng, geoCache: Geocache) {
-  const momento = momentoStorage.get([point.lat, point.lng].toString());
+  // const momento = momentoStorage.get([point.lat, point.lng].toString());
+  const momento = localStorage.getItem([point.lat, point.lng].toString());
   if (momento) {
     geoCache.fromMomento(momento);
     return;
@@ -272,7 +286,10 @@ function makePit(i: number, j: number) {
         playerCoins.push(
           geoCache.coins.splice(geoCache.coins.indexOf(foundCoin!), 1)[0]
         );
-        statusPanel.innerHTML = `${totalCoins} total GeoCoin(s)`;
+        localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
+        statusPanel.innerHTML = totalCoins
+          ? `${totalCoins} total GeoCoin(s)`
+          : "No coins yet...";
         updateGeoCoinCache(geoCache.coins, container, coordinate);
         updatePlayerCache(playerCoins, playerContainer);
       }
