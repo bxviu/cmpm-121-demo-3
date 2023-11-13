@@ -19,11 +19,6 @@ export class Board {
 
   private getCanonicalCell(cell: Cell): Cell {
     const { i, j } = cell;
-    // {
-    //   i: Math.round(cell.i / 1),
-    //   j: Math.round(cell.j / 1),
-    // };
-    // console.log(i, j);
     const key = [i, j].toString();
     if (!this.knownCells.has(key)) {
       this.knownCells.set(key, cell);
@@ -69,5 +64,9 @@ export class Board {
       }
     }
     return resultCells;
+  }
+
+  clearKnownCells() {
+    this.knownCells.clear();
   }
 }

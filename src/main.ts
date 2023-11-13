@@ -89,6 +89,16 @@ playerMarker.addTo(map);
 
 const sensorButton = document.querySelector("#sensor")!;
 sensorButton.addEventListener("click", () => {
+  // const position = map.locate({
+  //   setView: true,
+  //   watch: true,
+  //   maxZoom: GAMEPLAY_ZOOM_LEVEL,
+  // });
+  // console.log(playerMarker.getLatLng());
+  // playerMarker.setLatLng(
+  //   latLng(position.getCenter().lat, position.getCenter().lng)
+  // );
+  // console.log(playerMarker.getLatLng());
   navigator.geolocation.watchPosition((position) => {
     playerMarker.setLatLng(
       latLng(position.coords.latitude, position.coords.longitude)
@@ -111,7 +121,11 @@ addMovementClickEvent(moveRight, 0, TILE_DEGREES);
 
 const reset = document.querySelector("#reset")!;
 reset.addEventListener("click", () => {
-  playerMarker.setLatLng(latLng(0, 0));
+  // playerMarker.setLatLng(latLng(0, 0));
+  playerCoins.splice(0, playerCoins.length);
+  momentoStorage.clear();
+  worldMap.clearKnownCells();
+  renderedCaches.splice(0, renderedCaches.length);
   redrawMap();
 });
 
