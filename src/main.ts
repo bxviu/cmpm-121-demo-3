@@ -44,25 +44,39 @@ const playerMarker = leaflet.marker(NULL_ISLAND);
 const playerContainer = document.createElement("div");
 playerContainer.addEventListener("click", (e) => {
   if (e.target instanceof HTMLButtonElement) {
-    const regex = /(-?\d+)/g;
-    const result = e.target.id.match(regex);
+    // const regex = /(-?\d+)/g;
+    // const result = e.target.id.match(regex);
 
-    // Convert the matched strings to numbers
-    const numbers = result!.map((match) => parseInt(match, 10));
+    // // Convert the matched strings to numbers
+    // const numbers = result!.map((match) => parseInt(match, 10));
 
-    const [lat, lng, serial] = numbers;
-    totalCoins--;
+    // const [lat, lng, serial] = numbers;
+    const geoCoin = extractCoinData(e.target);
+    if (e.target.id.startsWith("viewHome")) {
+      console.log(geoCoin);
+      const coordinate = latLng(
+        geoCoin.lat * TILE_DEGREES,
+        geoCoin.lng * TILE_DEGREES
+      );
+      map.setView(coordinate);
+      renderPits(coordinate);
+      return;
+    }
     // remove coin and add it to player inventory
-    const foundCoin = getCoin(playerCoins, {
-      lat: lat,
-      lng: lng,
-      serial: serial,
-    } as GeoCoin);
-    selectedPit!.cache.push(
-      playerCoins.splice(playerCoins.indexOf(foundCoin!), 1)[0]
-    );
-    localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
-    statusPanel.innerHTML = `${totalCoins} total GeoCoin(s)`;
+    // const foundCoin = getCoin(playerCoins, {
+    //   lat: lat,
+    //   lng: lng,
+    //   serial: serial,
+    // } as GeoCoin);
+    const foundCoin = getCoin(playerCoins, geoCoin);
+    moveCoinBetweenCaches(playerCoins, selectedPit!.cache, foundCoin!);
+    // selectedPit!.cache.push(
+    //   playerCoins.splice(playerCoins.indexOf(foundCoin!), 1)[0]
+    // );
+    // localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
+    // statusPanel.innerHTML = playerCoins.length > 0
+    //   ? `${playerCoins.length} total GeoCoin(s)`
+    //   : "No coins yet...";
     updateGeoCoinCache(
       selectedPit!.cache,
       selectedPit!.container,
@@ -84,13 +98,17 @@ playerMarker.bindPopup(
     updatePlayerCache(playerCoins, playerContainer);
     return playerContainer;
   },
-  { closeOnClick: false, autoClose: false }
+  { autoClose: false }
 );
 playerMarker.addTo(map);
 
-let watchID = 0;
+let watchID: number | null = null;
 const sensorButton = document.querySelector("#sensor")!;
 sensorButton.addEventListener("click", () => {
+  if (watchID) {
+    redrawMap();
+    return;
+  }
   watchID = navigator.geolocation.watchPosition((position) => {
     playerMarker.setLatLng(
       latLng(position.coords.latitude, position.coords.longitude)
@@ -113,11 +131,11 @@ addMovementClickEvent(moveRight, 0, TILE_DEGREES);
 
 const reset = document.querySelector("#reset")!;
 reset.addEventListener("click", () => {
-  // playerMarker.setLatLng(latLng(0, 0));
-  navigator.geolocation.clearWatch(watchID);
+  if (watchID) {
+    navigator.geolocation.clearWatch(watchID);
+  }
   playerCoins.splice(0, playerCoins.length);
   playerHistory.splice(0, playerHistory.length);
-  momentoStorage.clear();
   localStorage.clear();
   worldMap.clearKnownCells();
   renderedCaches.splice(0, renderedCaches.length);
@@ -153,22 +171,19 @@ function redrawMap() {
   });
   renderedCaches.forEach((geoCache) => {
     const key = [geoCache.lat, geoCache.lng].toString();
-    momentoStorage.set(key, geoCache.toMomento());
     localStorage.setItem(key, geoCache.toMomento());
   });
   renderedCaches.splice(0, renderedCaches.length);
   playerHistory.push(playerMarker.getLatLng());
-  leaflet.polyline(playerHistory, { color: "red" }).addTo(map);
   map.setView(playerMarker.getLatLng());
   renderPits(playerMarker.getLatLng());
+  leaflet.polyline(playerHistory, { color: "red" }).addTo(map);
 }
 
 interface Momento<T> {
   toMomento(): T;
   fromMomento(momento: T): void;
 }
-
-const momentoStorage: Map<string, string> = new Map<string, string>();
 
 class Geocache implements Momento<string> {
   lat: number;
@@ -193,10 +208,7 @@ interface GeoCoin {
   lng: number;
   serial: number;
 }
-///// need to update player ui when refreshing coins, local storage
-///// remove unused momento storage
-/////polyline
-/////prompt before reset, center on coin's origin home, better coin ui, hide artificial movement unless asked
+
 function getCoin(coinCache: GeoCoin[], coinData: GeoCoin): GeoCoin | undefined {
   for (const coin of coinCache) {
     if (
@@ -210,24 +222,22 @@ function getCoin(coinCache: GeoCoin[], coinData: GeoCoin): GeoCoin | undefined {
   return undefined;
 }
 
-let totalCoins = 0;
 const playerCoins: GeoCoin[] = [];
 const playerHistory: LatLng[] = [];
-if (localStorage.getItem("playerCoins")) {
-  const coinString = localStorage.getItem("playerCoins")!;
+const coinString = localStorage.getItem("playerCoins");
+if (coinString) {
   const storageCoins = JSON.parse(coinString) as GeoCoin[];
   playerCoins.push(...storageCoins);
-  totalCoins = playerCoins.length;
 }
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML = totalCoins
-  ? `${totalCoins} total GeoCoin(s)`
-  : "No coins yet...";
+statusPanel.innerHTML =
+  playerCoins.length > 0
+    ? `${playerCoins.length} total GeoCoin(s)`
+    : "No coins yet...";
 
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
 function initializePit(point: leaflet.LatLng, geoCache: Geocache) {
-  // const momento = momentoStorage.get([point.lat, point.lng].toString());
   const momento = localStorage.getItem([point.lat, point.lng].toString());
   if (momento) {
     geoCache.fromMomento(momento);
@@ -257,54 +267,93 @@ function makePit(i: number, j: number) {
 
   const tip = pit.bindTooltip(`Pit: ${coordinate.lat},${coordinate.lng}`);
 
-  pit.bindPopup(() => {
-    tip.closeTooltip();
-    const container = document.createElement("div");
-    selectedPit = {
-      cache: geoCache.coins,
-      container: container,
-      coordinate: coordinate,
-    };
-    updatePlayerCache(playerCoins, playerContainer);
-    updateGeoCoinCache(geoCache.coins, container, coordinate);
-    container.addEventListener("click", (e) => {
-      if (e.target instanceof HTMLButtonElement) {
-        const regex = /(-?\d+)/g;
-        const result = e.target.id.match(regex);
+  pit.bindPopup(
+    () => {
+      tip.closeTooltip();
+      const container = document.createElement("div");
+      selectedPit = {
+        cache: geoCache.coins,
+        container: container,
+        coordinate: coordinate,
+      };
+      updatePlayerCache(playerCoins, playerContainer);
+      updateGeoCoinCache(geoCache.coins, container, coordinate);
+      container.addEventListener("click", (e) => {
+        if (e.target instanceof HTMLButtonElement) {
+          if (e.target.id == "deposit") {
+            playerMarker.openPopup();
+          } else {
+            // const regex = /(-?\d+)/g;
+            // const result = e.target.id.match(regex);
 
-        // Convert the matched strings to numbers
-        const numbers = result!.map((match) => parseInt(match, 10));
+            // // Convert the matched strings to numbers
+            // const numbers = result!.map((match) => parseInt(match, 10));
 
-        const [lat, lng, serial] = numbers;
-        totalCoins++;
-        // remove coin and add it to player inventory
-        const foundCoin = getCoin(geoCache.coins, {
-          lat: lat,
-          lng: lng,
-          serial: serial,
-        } as GeoCoin);
-        playerCoins.push(
-          geoCache.coins.splice(geoCache.coins.indexOf(foundCoin!), 1)[0]
-        );
-        localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
-        statusPanel.innerHTML = totalCoins
-          ? `${totalCoins} total GeoCoin(s)`
-          : "No coins yet...";
-        updateGeoCoinCache(geoCache.coins, container, coordinate);
-        updatePlayerCache(playerCoins, playerContainer);
-      }
-      e.stopPropagation();
-      e.preventDefault();
-      return false;
-    });
-    return container;
-  });
+            // const [lat, lng, serial] = numbers;
+            const geoCoin = extractCoinData(e.target);
+            // remove coin and add it to player inventory
+            // const foundCoin = getCoin(geoCache.coins, {
+            //   lat: lat,
+            //   lng: lng,
+            //   serial: serial,
+            // } as GeoCoin);
+            const foundCoin = getCoin(geoCache.coins, geoCoin);
+            moveCoinBetweenCaches(geoCache.coins, playerCoins, foundCoin!);
+            // playerCoins.push(
+            //   geoCache.coins.splice(geoCache.coins.indexOf(foundCoin!), 1)[0]
+            // );
+            // localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
+            // statusPanel.innerHTML = playerCoins.length > 0
+            // ? `${playerCoins.length} total GeoCoin(s)`
+            //   : "No coins yet...";
+            updateGeoCoinCache(geoCache.coins, container, coordinate);
+            updatePlayerCache(playerCoins, playerContainer);
+          }
+        }
+        e.stopPropagation();
+        e.preventDefault();
+        return false;
+      });
+      return container;
+    },
+    { autoClose: false }
+  );
   pit.getPopup()!.on("remove", () => {
     selectedPit = null;
     updatePlayerCache(playerCoins, playerContainer);
   });
   pit.addTo(map);
   return geoCache;
+}
+
+function extractCoinData(button: HTMLButtonElement) {
+  const regex = /(-?\d+)/g;
+  const result = button.id.match(regex);
+
+  // Convert the matched strings to numbers
+  const numbers = result!.map((match) => parseInt(match, 10));
+
+  const [lat, lng, serial] = numbers;
+  return {
+    lat: lat,
+    lng: lng,
+    serial: serial,
+  } as GeoCoin;
+}
+
+function moveCoinBetweenCaches(
+  sourceCache: GeoCoin[],
+  destinationCache: GeoCoin[],
+  targetCoin: GeoCoin
+) {
+  destinationCache.push(
+    sourceCache.splice(sourceCache.indexOf(targetCoin), 1)[0]
+  );
+  localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
+  statusPanel.innerHTML =
+    playerCoins.length > 0
+      ? `${playerCoins.length} total GeoCoin(s)`
+      : "No coins yet...";
 }
 
 function updateGeoCoinCache(
@@ -316,6 +365,7 @@ function updateGeoCoinCache(
   geoCoinCache.forEach((coin) => {
     container.innerHTML += `<div>GeoCoin | ${coin.lat}:${coin.lng}#${coin.serial} <button id="collectLat${coin.lat}Lng${coin.lng}S${coin.serial}">Collect</button></div>`;
   });
+  container.innerHTML += `<div><button id="deposit">Deposit Geocoins</button></div>`;
 }
 
 function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
@@ -324,7 +374,7 @@ function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
     if (selectedPit) {
       container.innerHTML += `<div>GeoCoin | ${coin.lat}:${coin.lng}#${coin.serial} <button id="depositLat${coin.lat}Lng${coin.lng}S${coin.serial}">Deposit</button></div>`;
     } else {
-      container.innerHTML += `<div>GeoCoin | ${coin.lat}:${coin.lng}#${coin.serial}</div>`;
+      container.innerHTML += `<div>GeoCoin | ${coin.lat}:${coin.lng}#${coin.serial} <button id="viewHomeLat${coin.lat}Lng${coin.lng}S${coin.serial}">View Home</button></div>`;
     }
   });
 }
