@@ -44,16 +44,8 @@ const playerMarker = leaflet.marker(NULL_ISLAND);
 const playerContainer = document.createElement("div");
 playerContainer.addEventListener("click", (e) => {
   if (e.target instanceof HTMLButtonElement) {
-    // const regex = /(-?\d+)/g;
-    // const result = e.target.id.match(regex);
-
-    // // Convert the matched strings to numbers
-    // const numbers = result!.map((match) => parseInt(match, 10));
-
-    // const [lat, lng, serial] = numbers;
     const geoCoin = extractCoinData(e.target);
     if (e.target.id.startsWith("viewHome")) {
-      console.log(geoCoin);
       const coordinate = latLng(
         geoCoin.lat * TILE_DEGREES,
         geoCoin.lng * TILE_DEGREES
@@ -62,21 +54,8 @@ playerContainer.addEventListener("click", (e) => {
       renderPits(coordinate);
       return;
     }
-    // remove coin and add it to player inventory
-    // const foundCoin = getCoin(playerCoins, {
-    //   lat: lat,
-    //   lng: lng,
-    //   serial: serial,
-    // } as GeoCoin);
     const foundCoin = getCoin(playerCoins, geoCoin);
     moveCoinBetweenCaches(playerCoins, selectedPit!.cache, foundCoin!);
-    // selectedPit!.cache.push(
-    //   playerCoins.splice(playerCoins.indexOf(foundCoin!), 1)[0]
-    // );
-    // localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
-    // statusPanel.innerHTML = playerCoins.length > 0
-    //   ? `${playerCoins.length} total GeoCoin(s)`
-    //   : "No coins yet...";
     updateGeoCoinCache(
       selectedPit!.cache,
       selectedPit!.container,
@@ -131,14 +110,22 @@ addMovementClickEvent(moveRight, 0, TILE_DEGREES);
 
 const reset = document.querySelector("#reset")!;
 reset.addEventListener("click", () => {
+  const sign = prompt(
+    `This will reset the location of all of the coins in the world and clear your path history. Type "yes" to confirm.`
+  );
+  if (sign != "yes") {
+    return;
+  }
   if (watchID) {
     navigator.geolocation.clearWatch(watchID);
   }
   playerCoins.splice(0, playerCoins.length);
   playerHistory.splice(0, playerHistory.length);
+  playerMarker.setLatLng(NULL_ISLAND);
   localStorage.clear();
   worldMap.clearKnownCells();
   renderedCaches.splice(0, renderedCaches.length);
+  updateStatusPanel();
   redrawMap();
 });
 
@@ -209,6 +196,21 @@ interface GeoCoin {
   serial: number;
 }
 
+function extractCoinData(button: HTMLButtonElement) {
+  const regex = /(-?\d+)/g;
+  const result = button.id.match(regex);
+
+  // Convert the matched strings to numbers
+  const numbers = result!.map((match) => parseInt(match, 10));
+
+  const [lat, lng, serial] = numbers;
+  return {
+    lat: lat,
+    lng: lng,
+    serial: serial,
+  } as GeoCoin;
+}
+
 function getCoin(coinCache: GeoCoin[], coinData: GeoCoin): GeoCoin | undefined {
   for (const coin of coinCache) {
     if (
@@ -230,10 +232,7 @@ if (coinString) {
   playerCoins.push(...storageCoins);
 }
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML =
-  playerCoins.length > 0
-    ? `${playerCoins.length} total GeoCoin(s)`
-    : "No coins yet...";
+updateStatusPanel();
 
 const worldMap = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 
@@ -283,29 +282,9 @@ function makePit(i: number, j: number) {
           if (e.target.id == "deposit") {
             playerMarker.openPopup();
           } else {
-            // const regex = /(-?\d+)/g;
-            // const result = e.target.id.match(regex);
-
-            // // Convert the matched strings to numbers
-            // const numbers = result!.map((match) => parseInt(match, 10));
-
-            // const [lat, lng, serial] = numbers;
             const geoCoin = extractCoinData(e.target);
-            // remove coin and add it to player inventory
-            // const foundCoin = getCoin(geoCache.coins, {
-            //   lat: lat,
-            //   lng: lng,
-            //   serial: serial,
-            // } as GeoCoin);
             const foundCoin = getCoin(geoCache.coins, geoCoin);
             moveCoinBetweenCaches(geoCache.coins, playerCoins, foundCoin!);
-            // playerCoins.push(
-            //   geoCache.coins.splice(geoCache.coins.indexOf(foundCoin!), 1)[0]
-            // );
-            // localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
-            // statusPanel.innerHTML = playerCoins.length > 0
-            // ? `${playerCoins.length} total GeoCoin(s)`
-            //   : "No coins yet...";
             updateGeoCoinCache(geoCache.coins, container, coordinate);
             updatePlayerCache(playerCoins, playerContainer);
           }
@@ -326,21 +305,6 @@ function makePit(i: number, j: number) {
   return geoCache;
 }
 
-function extractCoinData(button: HTMLButtonElement) {
-  const regex = /(-?\d+)/g;
-  const result = button.id.match(regex);
-
-  // Convert the matched strings to numbers
-  const numbers = result!.map((match) => parseInt(match, 10));
-
-  const [lat, lng, serial] = numbers;
-  return {
-    lat: lat,
-    lng: lng,
-    serial: serial,
-  } as GeoCoin;
-}
-
 function moveCoinBetweenCaches(
   sourceCache: GeoCoin[],
   destinationCache: GeoCoin[],
@@ -350,10 +314,7 @@ function moveCoinBetweenCaches(
     sourceCache.splice(sourceCache.indexOf(targetCoin), 1)[0]
   );
   localStorage.setItem("playerCoins", JSON.stringify(playerCoins));
-  statusPanel.innerHTML =
-    playerCoins.length > 0
-      ? `${playerCoins.length} total GeoCoin(s)`
-      : "No coins yet...";
+  updateStatusPanel();
 }
 
 function updateGeoCoinCache(
@@ -377,6 +338,13 @@ function updatePlayerCache(coinCache: GeoCoin[], container: HTMLDivElement) {
       container.innerHTML += `<div>GeoCoin | ${coin.lat}:${coin.lng}#${coin.serial} <button id="viewHomeLat${coin.lat}Lng${coin.lng}S${coin.serial}">View Home</button></div>`;
     }
   });
+}
+
+function updateStatusPanel() {
+  statusPanel.innerHTML =
+    playerCoins.length > 0
+      ? `${playerCoins.length} total GeoCoin(s)`
+      : "No coins yet...";
 }
 
 function renderPits(location: leaflet.LatLng) {
